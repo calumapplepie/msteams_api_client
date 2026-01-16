@@ -49,7 +49,7 @@ def loadJsonShifts() -> ShiftCollectionResponse:
     with open("shiftsData.json", "rb") as fp:
         shiftsData = fp.read()
     # i spent a chunk of time seeing if I could read the JSON back into MS Graph SDK objects
-    # but no luck :(
+    # and finally got it to work by reverse engineering the underdocumented pile of nonsense that it is
     
     from kiota_serialization_json.json_parse_node_factory import JsonParseNodeFactory
     rootNode = JsonParseNodeFactory().get_root_parse_node("application/json",shiftsData)
@@ -57,14 +57,24 @@ def loadJsonShifts() -> ShiftCollectionResponse:
     return value
     
 
-import icalendar
-def writeCalendar(shiftCollection: ShiftCollectionResponse):
-    events = []
+import icalendar as ical
+from collections import defaultdict
+def createCalendars(shiftCollection: ShiftCollectionResponse):
+    eventLists:dict[str,list[ical.Event]] = defaultdict(list)
+    if shiftCollection.value is None:
+        raise RuntimeError("missing value dict, is JSON valid?")
+    
     for shift in shiftCollection.value:
         if shift is None:
-            raise RuntimeError("no shifts!")
+            raise RuntimeError("no shifts in collection!")
+        if shift.user_id is None:
+            raise RuntimeError("no user ID!")
         sharedShift = shift.shared_shift
-        if sharedShift is None:
+        if (sharedShift := shift.shared_shift) is None:
             raise RuntimeError("shift with no SharedShift attribute")
-        event = icalendar.Event()
+        event = ical.Event()
         event.DTSTART = sharedShift.start_date_time
+        event.DTEND = sharedShift.end_date_time
+        eventLists[shift.user_id].append(event)
+
+    
