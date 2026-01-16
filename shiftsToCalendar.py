@@ -98,6 +98,12 @@ def initializeUsers():
 
 
 import icalendar as ical
+def addLocation(event:ical.Event, notes:str):
+    if "Meet @ Office" in notes or "Shop" in notes:
+            event.add("LOCATION","Powerstation Events")
+
+
+
 def createCalendars(shiftCollection: ShiftCollectionResponse):
     eventLists:dict[str,list[ical.Event]] = defaultdict(list)
     if shiftCollection.value is None:
@@ -114,6 +120,8 @@ def createCalendars(shiftCollection: ShiftCollectionResponse):
         event = ical.Event()
         event.DTSTART = sharedShift.start_date_time
         event.DTEND = sharedShift.end_date_time
+        assert (notes := sharedShift.notes) is not None
+        addLocation(event, notes)
         eventLists[shift.user_id].append(event)
 
     ical_folder = Path("./calendars")
