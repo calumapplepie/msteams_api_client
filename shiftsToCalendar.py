@@ -45,8 +45,8 @@ async def writeShiftsToJson():
 
 # load the json shifts back to a fancypants object
 from msgraph.generated.models.shift_collection_response import ShiftCollectionResponse 
-def loadJsonShifts() -> ShiftCollectionResponse:
-    with open("shiftsData.json", "rb") as fp:
+def loadJsonShifts(fileName) -> ShiftCollectionResponse:
+    with open(fileName, "rb") as fp:
         shiftsData = fp.read()
     # i spent a chunk of time seeing if I could read the JSON back into MS Graph SDK objects
     # and finally got it to work by reverse engineering the underdocumented pile of nonsense that it is
@@ -55,12 +55,15 @@ def loadJsonShifts() -> ShiftCollectionResponse:
     rootNode = JsonParseNodeFactory().get_root_parse_node("application/json",shiftsData)
     value = rootNode.get_object_value(ShiftCollectionResponse)
     return value
-    
 
-import icalendar as ical
-import namer
 
 from collections import defaultdict
+import namer
+# dictionary of user names
+userIdToNameDict = defaultdict(lambda:namer.generate(seperator=" ", style="title"))
+
+
+import icalendar as ical
 def createCalendars(shiftCollection: ShiftCollectionResponse):
     eventLists:dict[str,list[ical.Event]] = defaultdict(list)
     if shiftCollection.value is None:
@@ -79,13 +82,16 @@ def createCalendars(shiftCollection: ShiftCollectionResponse):
         event.DTEND = sharedShift.end_date_time
         eventLists[shift.user_id].append(event)
 
-    userIdToName = defaultdict(lambda:namer.generate(seperator=" ", style="title"))
-    userIdToName |= {}
-
     for userid, eventList in eventLists.items():
         cal = ical.Calendar()
-        userName = userIdToName["userid"]
+        userName = userIdToNameDict["userid"]
         print(f"writing calendar for {userName}")
         cal.calendar_name = userName
         with open(f"{userName}.ical", "rwb") as fp:
             fp.write(cal.to_ical)
+
+shifts = loadJsonShifts("testShiftsData.json")
+userIdToNameDict |= {}
+
+createCalendars(shifts)
+
