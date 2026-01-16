@@ -6,7 +6,7 @@ import json
 with open("secrets.json") as fp:
     secretsData:dict[str,str] = json.load(fp)
 
-
+from pathlib import Path
 
 # selected "client secret" authentication flow, see source of code: https://learn.microsoft.com/en-us/graph/sdks/choose-authentication-providers?tabs=python#client-credentials-provider
 from  msgraph.graph_service_client import GraphServiceClient
@@ -116,6 +116,7 @@ def createCalendars(shiftCollection: ShiftCollectionResponse):
         event.DTEND = sharedShift.end_date_time
         eventLists[shift.user_id].append(event)
 
+    ical_folder = Path("./calendars")
     for userid, eventList in eventLists.items():
         cal = ical.Calendar()
         userName = userIdToNameDict[userid]
@@ -123,11 +124,11 @@ def createCalendars(shiftCollection: ShiftCollectionResponse):
         cal.calendar_name = userName
         for event in eventList:
             cal.add_component(event)
-        with open(f"{userName}.ical", "wb") as fp:
+        with open(ical_folder/f"{userName}.ical", "wb") as fp:
             fp.write(cal.to_ical())
 
 shifts = loadJsonShifts("testShiftsData.json")
 userIdToNameDict |= {}
-
+initializeUsers()
 createCalendars(shifts)
 
