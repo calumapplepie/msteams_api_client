@@ -45,7 +45,7 @@ async def writeShiftsToJson():
 
     result = await graph_client.teams.by_team_id(secretsData["teamID"]).schedule.shifts.get(request_configuration = request_configuration)
 
-    with open("shiftsData.json", "rw") as fp:
+    with open("shiftsData.json", "w") as fp:
         json.dump(result,fp)
 
 # load the json shifts back to a fancypants object
@@ -65,7 +65,7 @@ def loadJsonShifts(fileName) -> ShiftCollectionResponse:
 from collections import defaultdict
 import namer
 # dictionary of user names
-userIdToNameDict = defaultdict(lambda:namer.generate(seperator=" ", style="title"))
+userIdToNameDict = defaultdict(lambda sep=" ": namer.generate(separator=sep, style="title"))
 
 """
 Set up our dictionary of users; currently using hardcoded values
@@ -118,11 +118,13 @@ def createCalendars(shiftCollection: ShiftCollectionResponse):
 
     for userid, eventList in eventLists.items():
         cal = ical.Calendar()
-        userName = userIdToNameDict["userid"]
+        userName = userIdToNameDict[userid]
         print(f"writing calendar for {userName}")
         cal.calendar_name = userName
-        with open(f"{userName}.ical", "rwb") as fp:
-            fp.write(cal.to_ical)
+        for event in eventList:
+            cal.add_component(event)
+        with open(f"{userName}.ical", "wb") as fp:
+            fp.write(cal.to_ical())
 
 shifts = loadJsonShifts("testShiftsData.json")
 userIdToNameDict |= {}
