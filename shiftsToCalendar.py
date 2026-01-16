@@ -101,6 +101,7 @@ import icalendar as ical
 def addLocation(event:ical.Event, notes:str):
     if "Meet @ Office" in notes or "Shop" in notes:
             event.add("LOCATION","Powerstation Events")
+            event.add('GEO', (41.550091, -72.890677))
 
 
 
@@ -121,6 +122,7 @@ def createCalendars(shiftCollection: ShiftCollectionResponse):
         event.DTSTART = sharedShift.start_date_time
         event.DTEND = sharedShift.end_date_time
         assert (notes := sharedShift.notes) is not None
+        event.add("SUMMARY", notes)
         addLocation(event, notes)
         eventLists[shift.user_id].append(event)
 
