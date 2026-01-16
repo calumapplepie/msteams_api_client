@@ -58,6 +58,8 @@ def loadJsonShifts() -> ShiftCollectionResponse:
     
 
 import icalendar as ical
+import namer
+
 from collections import defaultdict
 def createCalendars(shiftCollection: ShiftCollectionResponse):
     eventLists:dict[str,list[ical.Event]] = defaultdict(list)
@@ -77,4 +79,13 @@ def createCalendars(shiftCollection: ShiftCollectionResponse):
         event.DTEND = sharedShift.end_date_time
         eventLists[shift.user_id].append(event)
 
-    
+    userIdToName = defaultdict(lambda:namer.generate(seperator=" ", style="title"))
+    userIdToName |= {}
+
+    for userid, eventList in eventLists.items():
+        cal = ical.Calendar()
+        userName = userIdToName["userid"]
+        print(f"writing calendar for {userName}")
+        cal.calendar_name = userName
+        with open(f"{userName}.ical", "rwb") as fp:
+            fp.write(cal.to_ical)
