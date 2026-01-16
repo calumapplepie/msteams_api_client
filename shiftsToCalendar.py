@@ -53,18 +53,23 @@ from msgraph.generated.models.shift_collection_response import ShiftCollectionRe
 def loadJsonShifts(fileName) -> ShiftCollectionResponse:
     with open(fileName, "rb") as fp:
         shiftsData = fp.read()
+    
     # i spent a chunk of time seeing if I could read the JSON back into MS Graph SDK objects
     # and finally got it to work by reverse engineering the underdocumented pile of nonsense that it is
+    # in other words, we leverage the parser from the MSGraph SDK to parse the cached response/what we got from the Graph Explorer request
     
     from kiota_serialization_json.json_parse_node_factory import JsonParseNodeFactory
     rootNode = JsonParseNodeFactory().get_root_parse_node("application/json",shiftsData)
     value = rootNode.get_object_value(ShiftCollectionResponse)
+    # TODO; generalize this function so initalizeUsers can use it
     return value
-
 
 from collections import defaultdict
 import namer
-# dictionary of user names
+"""
+dictionary of user names from IDs, defaulting to generated nonsense if a name isnt known
+originally because I was going to only put in a few IDs manually, but then I decided to throw together initalizeUserd
+"""
 userIdToNameDict = defaultdict(lambda sep=" ": namer.generate(separator=sep, style="title"))
 
 """
@@ -74,7 +79,7 @@ def initializeUsers():
     from kiota_serialization_json.json_parse_node_factory import JsonParseNodeFactory
     from msgraph.generated.models.user_collection_response import UserCollectionResponse
    
-    # two userData arrays
+    # two userData arrays, because the json response was paginated; this is a hardcoded limit, if I was writing to be mainfainable id assert() the second json is the last one
     with open("testUserData1.json", "rb") as fp:
         userData1 = fp.read()
     with open("testUserData2.json", "rb") as fp:
@@ -97,19 +102,29 @@ def initializeUsers():
         userIdToNameDict[user.id] = f"{user.given_name} {user.surname}"
 
 
+# now we get into the calendar building section
 import icalendar as ical
+"""
+add location markers to calender event based on Teams-formatted notes
+"""
 def addLocation(event:ical.Event, notes:str):
     if "Meet @ Office" in notes or "Shop" in notes:
             event.add("LOCATION","Powerstation Events")
+            # an attempt to get Apple to put a location dot in the calender, for travel time; this didnt work
+            #TODO: get the components right for calendar apps to fill in the location for nav purposes
             event.add('GEO', (41.550091, -72.890677))
 
 
 
+"""
+read parsed shift collection to make calendars for each mentioned employee
+"""
 def createCalendars(shiftCollection: ShiftCollectionResponse):
-    eventLists:dict[str,list[ical.Event]] = defaultdict(list)
+    eventLists:dict[str,list[ical.Event]] = defaultdict(list) 
     if shiftCollection.value is None:
         raise RuntimeError("missing value dict, is JSON valid?")
     
+    # convert shifts into event collections indexed by usedID
     for shift in shiftCollection.value:
         if shift is None:
             raise RuntimeError("no shifts in collection!")
@@ -126,6 +141,8 @@ def createCalendars(shiftCollection: ShiftCollectionResponse):
         addLocation(event, notes)
         eventLists[shift.user_id].append(event)
 
+    
+    #write out prepared event collections to calenders
     ical_folder = Path("./calendars")
     for userid, eventList in eventLists.items():
         cal = ical.Calendar()
@@ -137,6 +154,7 @@ def createCalendars(shiftCollection: ShiftCollectionResponse):
         with open(ical_folder/f"{userName}.ical", "wb") as fp:
             fp.write(cal.to_ical())
 
+# actually run some code
 shifts = loadJsonShifts("testShiftsData.json")
 userIdToNameDict |= {}
 initializeUsers()
