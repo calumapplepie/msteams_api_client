@@ -18,11 +18,6 @@ from  msgraph.graph_service_client import GraphServiceClient
 # to those permissions beforehand.
 scopes = ['https://graph.microsoft.com/.default']
 
-# Values from app registration
-tenant_id = 'YOUR_TENANT_ID'
-client_id = 'YOUR_CLIENT_ID'
-certificate_path = 'YOUR_CERTIFICATE_PATH'
-
 # azure.identity.aio
 credential = auth.ClientSecretCredential(
     tenant_id=secretsData["tenant_id"],
@@ -43,7 +38,33 @@ async def writeShiftsToJson():
         )
     )
 
-    result = await graph_client.teams.by_team_id('team-id').schedule.shifts.get(request_configuration = request_configuration)
+    result = await graph_client.teams.by_team_id(secretsData["teamID"]).schedule.shifts.get(request_configuration = request_configuration)
+
     with open("shiftsData.json", "rw") as fp:
         json.dump(result,fp)
 
+# load the json shifts back to a fancypants object
+from msgraph.generated.models.shift_collection_response import ShiftCollectionResponse 
+def loadJsonShifts() -> ShiftCollectionResponse:
+    with open("shiftsData.json", "rb") as fp:
+        shiftsData = fp.read()
+    # i spent a chunk of time seeing if I could read the JSON back into MS Graph SDK objects
+    # but no luck :(
+    
+    from kiota_serialization_json.json_parse_node_factory import JsonParseNodeFactory
+    rootNode = JsonParseNodeFactory().get_root_parse_node("application/json",shiftsData)
+    value = rootNode.get_object_value(ShiftCollectionResponse)
+    return value
+    
+
+import icalendar
+def writeCalendar(shiftCollection: ShiftCollectionResponse):
+    events = []
+    for shift in shiftCollection.value:
+        if shift is None:
+            raise RuntimeError("no shifts!")
+        sharedShift = shift.shared_shift
+        if sharedShift is None:
+            raise RuntimeError("shift with no SharedShift attribute")
+        event = icalendar.Event()
+        event.DTSTART = sharedShift.start_date_time
