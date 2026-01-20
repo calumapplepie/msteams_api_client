@@ -50,31 +50,21 @@ async def writePagedKiotaDataToJson(graph_client: GraphServiceClient, outputData
 
     # prepare the writer
     writer = JsonSerializationWriter()
-    
     # we may have gotten a paginated response; use a PageIterator to output it
     iter = PageIterator(outputData,graph_client.request_adapter)
     # if the MS people who wrote the SDK used python, I could just do this: "async for page in iter"
-    # instead, we need to do the following to serialize all the objects in the list
-    depth = 0
-    while True:
-        # serialize all the values of the current page
-        assert iter.current_page.value is not None
-        for i in iter.current_page.value:
-            i.serialize(writer)
-        print(f"serialized page of {len(iter.current_page.value)} values")
-        if iter.has_next is False:
-            break
-        if depth > 10:
-            print("too many pages!")
-            break
-        depth += 1
-        await iter.next()
-        
-
+    # instead, we need to use stupid non-pythonic workarounds to serialize
+    allData = []
+    await iter.iterate(lambda item: 
+                       allData.append(item) or True # callback must return true :/
+                       )
+    
+    writer.write_collection_of_object_values("value", allData)
 
     #write out the data
     with open(filename, "bw") as fp:
         fp.write(writer.get_serialized_content())
+    print(f"serialized {len(allData)} items to {filename}")
 
 
 # based on snippet GraphExplorer
@@ -106,14 +96,21 @@ def loadJsonShifts(fileName) -> ShiftCollectionResponse:
     with open(fileName, "rb") as fp:
         shiftsData = fp.read()
     
+    value = loadJsonResponseData(ShiftCollectionResponse, shiftsData)
+    return value
+
+"""
+parse a collection of json-formatted data, assuming it is dataType
+No type checking (for now)
+"""
+def loadJsonResponseData(dataType, data):
     # i spent a chunk of time seeing if I could read the JSON back into MS Graph SDK objects
     # and finally got it to work by reverse engineering the underdocumented pile of nonsense that it is
     # in other words, we leverage the parser from the MSGraph SDK to parse the cached response/what we got from the Graph Explorer request
-    
     from kiota_serialization_json.json_parse_node_factory import JsonParseNodeFactory
-    rootNode = JsonParseNodeFactory().get_root_parse_node("application/json",shiftsData)
-    value = rootNode.get_object_value(ShiftCollectionResponse)
-    # TODO; generalize this function so initalizeUsers can use it
+    rootNode = JsonParseNodeFactory().get_root_parse_node("application/json",data)
+    value = rootNode.get_object_value(dataType)
+    print(f"read data for {len(value.value)} users")
     return value
 
 from collections import defaultdict
@@ -128,7 +125,6 @@ userIdToNameDict = defaultdict(lambda sep=" ": namer.generate(separator=sep, sty
 Set up our dictionary of users; currently using hardcoded values
 """
 def initializeUsers():
-    from kiota_serialization_json.json_parse_node_factory import JsonParseNodeFactory
     from msgraph.generated.models.user_collection_response import UserCollectionResponse
    
     # two userData arrays, because the json response was paginated; this is a hardcoded limit, if I was writing to be mainfainable id assert() the second json is the last one
@@ -138,11 +134,9 @@ def initializeUsers():
         userData2 = fp.read()
     
 
-    rootNode = JsonParseNodeFactory().get_root_parse_node("application/json",userData1)
-    userCollection1 = rootNode.get_object_value(UserCollectionResponse)   
+    userCollection1 = loadJsonResponseData(UserCollectionResponse,userData1)
+    userCollection2 = loadJsonResponseData(UserCollectionResponse,userData2)
     assert userCollection1.value is not None
-    rootNode = JsonParseNodeFactory().get_root_parse_node("application/json",userData2)
-    userCollection2 = rootNode.get_object_value(UserCollectionResponse)   
     assert userCollection2.value is not None
     userCollectionFull = userCollection1.value.copy() # we wont ever user userCol1 again, but still.
     userCollectionFull.extend(userCollection2.value)
@@ -152,6 +146,7 @@ def initializeUsers():
         if user.surname is None or user.given_name is None:
             continue
         userIdToNameDict[user.id] = f"{user.given_name} {user.surname}"
+    print(f"initialized {len(userCollectionFull)} users")
 
 
 # now we get into the calendar building section
@@ -219,4 +214,12 @@ import asyncio
 graph_client: GraphServiceClient = initalize_auth()
 print("authInitialized!")
 asyncio.run(writeUsersToJson(graph_client))
+
+print("completed requests")
+initializeUsers()
+with open("userData.json", 'rb') as fp:
+    data = fp.read()
+
+from msgraph.generated.models.user_collection_response import UserCollectionResponse
+print(loadJsonResponseData(UserCollectionResponse, data))
 
