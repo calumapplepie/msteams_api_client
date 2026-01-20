@@ -34,6 +34,16 @@ def initalize_auth() -> GraphServiceClient:
 
     return GraphServiceClient(credential, scopes)
 
+from kiota_abstractions.serialization.parsable import Parsable
+def writeKiotaDataToJson(outputData: Parsable, filename:Path|str):
+    from kiota_serialization_json.json_serialization_writer import JsonSerializationWriter
+    if isinstance(filename,str):
+        filename = Path.cwd()/filename
+    with open(filename, "bw") as fp:
+        writer = JsonSerializationWriter()
+        outputData.serialize(writer)
+        fp.write(writer.get_serialized_content())
+
 
 # based on snippet GraphExplorer
 async def writeShiftsToJson(graph_client: GraphServiceClient):
@@ -47,18 +57,17 @@ async def writeShiftsToJson(graph_client: GraphServiceClient):
     )
 
     result = await graph_client.teams.by_team_id(secretsData["team_id"]).schedule.shifts.get(request_configuration = request_configuration)
+    assert result is not None
+    writeKiotaDataToJson(result, "shiftsData.json")
+    
 
-    with open("shiftsData.json", "w") as fp:
-        json.dump(result,fp)
+
 
 async def writeUsersToJson(graph_client: GraphServiceClient):
     result = await graph_client.users.get()
     assert result is not None
-    from kiota_serialization_json.json_serialization_writer import JsonSerializationWriter
-    with open("shiftsData.json", "w") as fp:
-        writer = JsonSerializationWriter()
-        result.serialize(writer)
-        
+    writeKiotaDataToJson(result, "userData.json");
+
 
 
 # load the json shifts back to a fancypants object
