@@ -35,13 +35,45 @@ def initalize_auth() -> GraphServiceClient:
     return GraphServiceClient(credential, scopes)
 
 from kiota_abstractions.serialization.parsable import Parsable
-def writeKiotaDataToJson(outputData: Parsable, filename:Path|str):
+from msgraph.generated.models.base_collection_pagination_count_response import BaseCollectionPaginationCountResponse
+"""
+Given an initial response of paginated data, continue to request the next page,
+and then serialize the assembled data out to a single .json file.
+"""
+async def writePagedKiotaDataToJson(graph_client: GraphServiceClient, outputData: BaseCollectionPaginationCountResponse, filename:Path|str):
     from kiota_serialization_json.json_serialization_writer import JsonSerializationWriter
+    from msgraph_core.tasks import PageIterator
+
+    # if given just a name, not a path, write to current directory
     if isinstance(filename,str):
         filename = Path.cwd()/filename
+
+    # prepare the writer
+    writer = JsonSerializationWriter()
+    
+    # we may have gotten a paginated response; use a PageIterator to output it
+    iter = PageIterator(outputData,graph_client.request_adapter)
+    # if the MS people who wrote the SDK used python, I could just do this: "async for page in iter"
+    # instead, we need to do the following to serialize all the objects in the list
+    depth = 0
+    while True:
+        # serialize all the values of the current page
+        assert iter.current_page.value is not None
+        for i in iter.current_page.value:
+            i.serialize(writer)
+        print(f"serialized page of {len(iter.current_page.value)} values")
+        if iter.has_next is False:
+            break
+        if depth > 10:
+            print("too many pages!")
+            break
+        depth += 1
+        await iter.next()
+        
+
+
+    #write out the data
     with open(filename, "bw") as fp:
-        writer = JsonSerializationWriter()
-        outputData.serialize(writer)
         fp.write(writer.get_serialized_content())
 
 
@@ -58,15 +90,13 @@ async def writeShiftsToJson(graph_client: GraphServiceClient):
 
     result = await graph_client.teams.by_team_id(secretsData["team_id"]).schedule.shifts.get(request_configuration = request_configuration)
     assert result is not None
-    writeKiotaDataToJson(result, "shiftsData.json")
-    
-
+    await writePagedKiotaDataToJson(graph_client, result, "shiftsData.json")
 
 
 async def writeUsersToJson(graph_client: GraphServiceClient):
     result = await graph_client.users.get()
     assert result is not None
-    writeKiotaDataToJson(result, "userData.json");
+    await writePagedKiotaDataToJson(graph_client, result, "userData.json");
 
 
 
