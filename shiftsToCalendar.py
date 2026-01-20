@@ -6,34 +6,37 @@ import json
 with open("secrets.json") as fp:
     secretsData:dict[str,str] = json.load(fp)
 
+print(secretsData)
 from pathlib import Path
 
 # selected "client secret" authentication flow, see source of code: https://learn.microsoft.com/en-us/graph/sdks/choose-authentication-providers?tabs=python#client-credentials-provider
 from  msgraph.graph_service_client import GraphServiceClient
 
-graph_client: GraphServiceClient
-def initalize_auth():
-    import azure.identity.aio as auth
+def initalize_auth() -> GraphServiceClient:
+    import azure.identity as auth
 
 
     # The client credentials flow requires that you request the
     # /.default scope, and pre-configure your permissions on the
     # app registration in Azure. An administrator must grant consent
     # to those permissions beforehand.
-    scopes = ['https://graph.microsoft.com/.default']
+    scopes = [
+              'https://graph.microsoft.com/User.ReadBasic.All'
+]
 
     # azure.identity.aio
-    credential = auth.ClientSecretCredential(
+    credential = auth.InteractiveBrowserCredential(
         tenant_id=secretsData["tenant_id"],
         client_id=secretsData["client_id"],
-        client_secret=secretsData["client_secret"])
+        redirect_uri="https://localhost:5000",
+        client_credential=secretsData["client_secret"]
+    )
 
-    graph_client = GraphServiceClient(credential, scopes)
+    return GraphServiceClient(credential, scopes)
+
 
 # based on snippet GraphExplorer
-
-
-async def writeShiftsToJson():
+async def writeShiftsToJson(graph_client: GraphServiceClient):
     from msgraph.generated.teams.item.schedule.shifts.shifts_request_builder import ShiftsRequestBuilder
     from kiota_abstractions.base_request_configuration import RequestConfiguration
 
@@ -43,10 +46,20 @@ async def writeShiftsToJson():
         )
     )
 
-    result = await graph_client.teams.by_team_id(secretsData["teamID"]).schedule.shifts.get(request_configuration = request_configuration)
+    result = await graph_client.teams.by_team_id(secretsData["team_id"]).schedule.shifts.get(request_configuration = request_configuration)
 
     with open("shiftsData.json", "w") as fp:
         json.dump(result,fp)
+
+async def writeUsersToJson(graph_client: GraphServiceClient):
+    result = await graph_client.users.get()
+    assert result is not None
+    from kiota_serialization_json.json_serialization_writer import JsonSerializationWriter
+    with open("shiftsData.json", "w") as fp:
+        writer = JsonSerializationWriter()
+        result.serialize(writer)
+        
+
 
 # load the json shifts back to a fancypants object
 from msgraph.generated.models.shift_collection_response import ShiftCollectionResponse 
@@ -154,9 +167,17 @@ def createCalendars(shiftCollection: ShiftCollectionResponse):
         with open(ical_folder/f"{userName}.ical", "wb") as fp:
             fp.write(cal.to_ical())
 
+
+
+"""
 # actually run some code
 shifts = loadJsonShifts("testShiftsData.json")
 userIdToNameDict |= {}
 initializeUsers()
 createCalendars(shifts)
+"""
+import asyncio
+graph_client: GraphServiceClient = initalize_auth()
+print("authInitialized!")
+asyncio.run(writeUsersToJson(graph_client))
 
